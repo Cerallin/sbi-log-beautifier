@@ -61,9 +61,10 @@
 
 
     // =========================
-    // 颜色映射
+    // 颜色映射（保留命名映射）与灵活颜色解析
+    // 支持 CSS 合法颜色名、hex、rgb()/rgba() 等，自动生成低透明度背景色
     // =========================
-    const COLOR_BG_MAP = {
+    const NAMED_COLOR_BG_MAP = {
         red: 'rgba(255, 80, 80, 0.10)',
         green: 'rgba(80, 200, 120, 0.10)',
         blue: 'rgba(80, 120, 255, 0.10)',
@@ -76,6 +77,44 @@
         cyan: 'rgba(0, 180, 180, 0.10)',
         black: 'rgba(0, 0, 0, 0.06)'
     };
+
+    // 从 "rgb(...)" 或 "rgba(...)" 字符串解析出 [r,g,b,a]
+    function parseRGBString(str) {
+        if (!str) return null;
+        const m = str.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s\/]\s*([0-9.]+))?\s*\)/);
+        if (!m) return null;
+        return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), m[4] !== undefined ? parseFloat(m[4]) : 1];
+    }
+
+    // 给定任意 CSS 合法颜色，返回低透明度背景色和用于边框/文字的实色
+    function getColors(colorInput) {
+        const color = (colorInput || 'black').toString();
+
+        // 优先使用命名映射（保留原有细节）
+        const key = color.toLowerCase();
+        if (NAMED_COLOR_BG_MAP[key]) {
+            return { bgColor: NAMED_COLOR_BG_MAP[key], solidColor: key };
+        }
+
+        // 使用离屏元素让浏览器解析任意 CSS 颜色字符串
+        const el = document.createElement('div');
+        el.style.position = 'absolute';
+        el.style.width = '1px';
+        el.style.height = '1px';
+        el.style.left = '-9999px';
+        el.style.backgroundColor = color;
+        document.body.appendChild(el);
+        const computed = getComputedStyle(el).backgroundColor;
+        document.body.removeChild(el);
+
+        const rgba = parseRGBString(computed) || [0, 0, 0, 1];
+        const r = rgba[0], g = rgba[1], b = rgba[2];
+
+        const bgColor = `rgba(${r}, ${g}, ${b}, 0.10)`;
+        const solidColor = `rgb(${r}, ${g}, ${b})`;
+
+        return { bgColor, solidColor };
+    }
 
     // =========================
     // CSS
@@ -151,9 +190,9 @@
 
         color = (color || 'black').toLowerCase();
 
-        const bgColor =
-              COLOR_BG_MAP[color] ||
-              'rgba(0,0,0,0.05)';
+        const { bgColor, solidColor } = getColors(color);
+        const background = bgColor || 'rgba(0,0,0,0.05)';
+        const borderColor = solidColor || color;
 
         let nameHTML = '';
         let textHTML = '';
@@ -210,13 +249,13 @@
             <div
                 class="trpg-msg ${extraClass}"
                 style="
-                    background:${bgColor};
-                    border-left:4px solid ${color};
+                    background:${background};
+                    border-left:4px solid ${borderColor};
                 "
             >
                 <div
                     class="trpg-name"
-                    style="color:${color}"
+                    style="color:${borderColor}"
                 >
                     ${nameHTML}
                 </div>
