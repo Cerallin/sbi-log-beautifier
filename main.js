@@ -19,7 +19,7 @@
     function isLogPage() {
 
         const posts =
-              document.querySelectorAll('.post__content');
+            document.querySelectorAll('.post__content');
 
         if (!posts.length) {
             return false;
@@ -34,7 +34,7 @@
         //
         // 不允许换行
         const LOG_REGEX =
-              /[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm;
+            /[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm;
 
         let matchCount = 0;
 
@@ -42,10 +42,10 @@
 
             // textContent 比 innerText 快
             const text =
-                  post.textContent || '';
+                post.textContent || '';
 
             const matches =
-                  text.match(LOG_REGEX);
+                text.match(LOG_REGEX);
 
             if (matches) {
                 matchCount += matches.length;
@@ -268,13 +268,16 @@
     }
 
     // =========================
-    // 获取p标签下所有的内容
-    // 基本上都是span包裹的东西，但也要兼顾纯文本行的备注和分团等信息
+    // 获取p标签下所有的内容，有以下几种
+    // 1. span包裹的消息行
+    // 2. 纯文本行（备注、分团信息等）
+    // 3. 图片
     // =========================
     function splitPByTopLevelBr(p) {
         const groups = [];
         let current = [];
 
+        // 只在顶层进行分割，嵌套的br不处理
         p.childNodes.forEach(node => {
 
             // 顶层 BR -> 分段
@@ -301,6 +304,9 @@
         return groups;
     }
 
+    // =========================
+    // 处理单个p标签
+    // =========================
     function processP(post) {
         let html = "";
 
@@ -308,33 +314,33 @@
 
         groups.forEach(nodes => {
 
-            // 临时容器
-            const temp = document.createElement('div');
-
             nodes.forEach(node => {
-                temp.appendChild(node.cloneNode(true));
+                // 有span -> 普通消息
+                if (node.tagName === 'SPAN') {
+
+                    html += renderMessage(
+                        node.innerHTML,
+                        node.style.color || 'black',
+                        false
+                    );
+
+                } else if (node.tagName === 'IMG') {
+
+                    // 如果是图片
+                    html += node.outerHTML;
+                    return;
+
+                } else {
+
+                    // -> system/备注
+                    html += renderMessage(
+                        node.textContent || '',
+                        'gray',
+                        true
+                    );
+                }
             });
 
-            const span = temp.querySelector(':scope > span');
-
-            // 有span -> 普通消息
-            if (span) {
-
-                html += renderMessage(
-                    span.innerHTML,
-                    span.style.color || 'black',
-                    false
-                );
-
-            } else {
-
-                // 无span -> system备注
-                html += renderMessage(
-                    temp.textContent || '',
-                    'gray',
-                    true
-                );
-            }
         });
 
         return html;
@@ -346,7 +352,7 @@
     function processPosts() {
 
         const posts =
-              document.querySelectorAll('.post__content > p');
+            document.querySelectorAll('.post__content > p');
 
         posts.forEach(post => {
 
