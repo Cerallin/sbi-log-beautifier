@@ -263,7 +263,10 @@
                     ${nameHTML}
                 </div>
 
-                <div class="trpg-text">
+                <div
+                    class="trpg-text"
+                    ${(extraClass == '') ? '' : `style="color:${solidColor};"`}
+                >
                     ${textHTML}
                 </div>
             </div>
