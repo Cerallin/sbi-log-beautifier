@@ -154,6 +154,7 @@
         .trpg-text {
             flex: 1;
             word-break: break-word;
+			text-align: justify;
         }
 
         .trpg-role {
