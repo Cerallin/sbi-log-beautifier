@@ -13,6 +13,10 @@
 (function () {
     'use strict';
 
+    const OPTIONS = {
+        msgOpacity: 0.05,
+    };
+
     // =========================
     // 根据文本特征判断是否是跑团log页面
     // 特征：
@@ -62,24 +66,6 @@
     }
 
 
-    // =========================
-    // 颜色映射（保留命名映射）与灵活颜色解析
-    // 支持 CSS 合法颜色名、hex、rgb()/rgba() 等，自动生成低透明度背景色
-    // =========================
-    const NAMED_COLOR_BG_MAP = {
-        red: 'rgba(255, 80, 80, 0.10)',
-        green: 'rgba(80, 200, 120, 0.10)',
-        blue: 'rgba(80, 120, 255, 0.10)',
-        purple: 'rgba(180, 100, 255, 0.10)',
-        grey: 'rgba(120, 120, 120, 0.10)',
-        gray: 'rgba(120, 120, 120, 0.10)',
-        orange: 'rgba(255, 165, 0, 0.10)',
-        yellow: 'rgba(255, 220, 0, 0.10)',
-        pink: 'rgba(255, 105, 180, 0.10)',
-        cyan: 'rgba(0, 180, 180, 0.10)',
-        black: 'rgba(0, 0, 0, 0.06)'
-    };
-
     // 从 "rgb(...)" 或 "rgba(...)" 字符串解析出 [r,g,b,a]
     function parseRGBString(str) {
         if (!str) return null;
@@ -91,6 +77,20 @@
     // 给定任意 CSS 合法颜色，返回低透明度背景色和用于边框/文字的实色
     function getColors(colorInput) {
         const color = (colorInput || 'black').toString();
+
+        const NAMED_COLOR_BG_MAP = {
+            red: `rgba(255, 80, 80, ${OPTIONS.msgOpacity})`,
+            green: `rgba(80, 200, 120, ${OPTIONS.msgOpacity})`,
+            blue: `rgba(80, 120, 255, ${OPTIONS.msgOpacity})`,
+            purple: `rgba(180, 100, 255, ${OPTIONS.msgOpacity})`,
+            grey: `rgba(120, 120, 120, ${OPTIONS.msgOpacity})`,
+            gray: `rgba(120, 120, 120, ${OPTIONS.msgOpacity})`,
+            orange: `rgba(255, 165, 0, ${OPTIONS.msgOpacity})`,
+            yellow: `rgba(255, 220, 0, ${OPTIONS.msgOpacity})`,
+            pink: `rgba(255, 105, 180, ${OPTIONS.msgOpacity})`,
+            cyan: `rgba(0, 180, 180, ${OPTIONS.msgOpacity})`,
+            black: `rgba(0, 0, 0, ${OPTIONS.msgOpacity})`
+        };
 
         // 优先使用命名映射（保留原有细节）
         const key = color.toLowerCase();
@@ -112,7 +112,7 @@
         const rgba = parseRGBString(computed) || [0, 0, 0, 1];
         const r = rgba[0], g = rgba[1], b = rgba[2];
 
-        const bgColor = `rgba(${r}, ${g}, ${b}, 0.10)`;
+        const bgColor = `rgba(${r}, ${g}, ${b}, ${OPTIONS.msgOpacity})`;
         const solidColor = `rgb(${r}, ${g}, ${b})`;
 
         return { bgColor, solidColor };
@@ -194,7 +194,7 @@
         color = (color || 'black').toLowerCase();
 
         const { bgColor, solidColor } = getColors(color);
-        const background = bgColor || 'rgba(0,0,0,0.05)';
+        const background = bgColor || `rgba(0,0,0,${OPTIONS.msgOpacity})`;
         const borderColor = solidColor || color;
 
         let nameHTML = '';
