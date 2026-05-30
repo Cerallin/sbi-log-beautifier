@@ -18,12 +18,18 @@
         msgFontSize: '18px',
     };
 
+    const PAGE_TYPES = {
+        NO_LOG: -1,
+        LOG_SKY: 1, // 天空邮局
+        LOG_WALL: 2, // 华尔街骑士
+    };
+
     // =========================
     // 根据文本特征判断是否是跑团log页面
     // 特征：
     // 1. 出现 "角色|玩家:" 格式超过20次
     // =========================
-    function isLogPage() {
+    function getPageType() {
 
         const posts =
             document.querySelectorAll('.post__content');
@@ -40,32 +46,38 @@
         // KP|主持人:
         //
         // 不允许换行
-        const LOG_REGEX =
-            /[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm;
-
-        let matchCount = 0;
-
-        posts.forEach(post => {
-
-            // textContent 比 innerText 快
-            const text =
-                post.textContent || '';
-
-            const matches =
-                text.match(LOG_REGEX);
-
+        const skyMatchCount = Array.from(posts).reduce((sum, post) => {
+            const text = post.textContent || '';
+            const matches = text.match(/[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm);
             if (matches) {
-                matchCount += matches.length;
+                return sum + matches.length;
             }
-        });
+        }, 0);
 
-        return (matchCount >= 20);
+        if (skyMatchCount >= 20) {
+            return PAGE_TYPES.LOG_SKY;
+        }
+
+        // 匹配：
+        // 时间 <角色|玩家>
+        //
+        // 示例：
+        // 13:10:42 <利亚姆|清水>
+        const wallMatchCount = Array.from(posts).reduce((sum, post) => {
+            const text = post.textContent || '';
+            const matches = text.match(/\d+:\d+:\d+\s+<[^|<>]{1,40}\|[^<>]{1,40}>/gm);
+            if (matches) {
+                return sum + matches.length;
+            }
+        }, 0);
+
+        if (wallMatchCount >= 20) {
+            return PAGE_TYPES.LOG_WALL;
+        }
+
+        // 都不是，返回非日志页
+        return PAGE_TYPES.NO_LOG;
     }
-
-    if (!isLogPage()) {
-        return;
-    }
-
 
     // 从 "rgb(...)" 或 "rgba(...)" 字符串解析出 [r,g,b,a]
     function parseRGBString(str) {
@@ -179,13 +191,70 @@
     document.head.appendChild(style);
 
     // =========================
+    // 将一行原始文本解析为具有属性的消息结构体
+    // =========================
+    function parseMessage(rawText) {
+        rawText = (rawText || '').trim();
+        if (!rawText) return null;
+
+        const message = {
+            role: null,
+            player: null,
+            gm: null,
+            text: '',
+            isOoc: false,
+            isSystem: false,
+            original: rawText,
+        };
+
+        const firstColon = rawText.indexOf(':');
+        if (firstColon !== -1) {
+            const left = rawText.slice(0, firstColon).trim();
+            const right = rawText.slice(firstColon + 1).trim();
+
+            if (left.includes('|')) {
+                const [role, player] = left.split('|').map(item => item.trim());
+                message.role = role;
+                message.player = player;
+            } else {
+                message.gm = left;
+            }
+
+            message.text = right;
+            message.isOoc = right.startsWith('（') || right.startsWith('(');
+            return message;
+        }
+
+        const wallMatch = rawText.match(/^\s*&lt;([^<>]{1,40})&gt;\s*([\s\S]*)$/);
+        if (wallMatch) {
+            const inner = wallMatch[1].trim();
+            const body = wallMatch[2].trim();
+
+            if (inner.includes('|')) {
+                const [role, player] = inner.split('|').map(item => item.trim());
+                message.role = role;
+                message.player = player;
+            } else {
+                message.role = inner;
+            }
+
+            message.text = body;
+            message.isOoc = message.text.startsWith('（') || message.text.startsWith('(');
+            
+            return message;
+        }
+
+        message.text = rawText;
+        message.isSystem = true;
+
+        return message;
+    }
+
+    // =========================
     // 单条消息渲染
     // =========================
-    function renderMessage(rawText, color) {
-
-        rawText = rawText.trim();
-
-        if (!rawText) return '';
+    function renderMessage(message, color) {
+        if (!message || !message.text) return '';
 
         color = (color || 'black').toLowerCase();
 
@@ -194,55 +263,27 @@
         const borderColor = solidColor || color;
 
         let nameHTML = '';
-        let textHTML = '';
-        let extraClass = '';
+        let extraClass = message.isOoc ? 'trpg-ooc' : '';
 
-        const firstColon = rawText.indexOf(':');
-        const hasColon = (firstColon !== -1);
-
-        if (hasColon) {
-
-            const left = rawText.slice(0, firstColon).trim();
-            const right = rawText.slice(firstColon + 1).trim();
-
-            // PC
-            if (left.includes('|')) {
-
-                const [role, player] = left.split('|');
-
-                nameHTML = `
-                    <span class="trpg-role">
-                        ${role}
-                    </span>
-                    <span class="trpg-player">
-                        ${player}
-                    </span>
-                `;
-
-            } else {
-                // GM
-                nameHTML = `
-                    <span class="trpg-gm">
-                        ${left}
-                    </span>
-                `;
-            }
-
-            // OOC讨论
-            if (
-                right.startsWith('（') ||
-                right.startsWith('(')
-            ) {
-                extraClass = 'trpg-ooc';
-            }
-
-            textHTML = right
-                .replace(/\n/g, '<br>');
-
-        } else {
-            textHTML = rawText
-                .replace(/\n/g, '<br>');
+        if (message.role || message.player) {
+            nameHTML = `
+                <span class="trpg-role">
+                    ${message.role || ''}
+                </span>
+                <span class="trpg-player">
+                    ${message.player || ''}
+                </span>
+            `;
+        } else if (message.gm) {
+            nameHTML = `
+                <span class="trpg-gm">
+                    ${message.gm}
+                </span>
+            `;
         }
+
+        const textHTML = message.text
+            .replace(/\n/g, '<br>');
 
         return `
             <div
@@ -279,6 +320,8 @@
         const groups = [];
         let current = [];
 
+        if (!p || !p.childNodes) return groups;
+
         // 只在顶层进行分割，嵌套的br不处理
         p.childNodes.forEach(node => {
 
@@ -307,71 +350,93 @@
     }
 
     // =========================
-    // 处理单个p标签
-    // =========================
-    function processP(post) {
-        let html = "";
-
-        const groups = splitPByTopLevelBr(post);
-
-        groups.forEach(nodes => {
-
-            nodes.forEach(node => {
-                // 有span -> 普通消息
-                if (node.tagName === 'SPAN') {
-
-                    html += renderMessage(
-                        node.innerHTML,
-                        node.style.color || 'black',
-                        false
-                    );
-
-                } else if (node.tagName === 'IMG') {
-
-                    // 如果是图片
-                    html += node.outerHTML;
-                    return;
-
-                } else {
-
-                    // -> system/备注
-                    html += renderMessage(
-                        node.textContent || '',
-                        'gray',
-                        true
-                    );
-                }
-            });
-
-        });
-
-        return html;
-    }
-
-    // =========================
     // 批量处理
     // =========================
-    function processPosts() {
-
-        const posts =
-            document.querySelectorAll('.post__content > p');
+    function processSkyPosts() {
+        const posts = document.querySelectorAll('.post__content > p');
 
         posts.forEach(post => {
-
             if (post.dataset.trpgBeautified) return;
-
             post.dataset.trpgBeautified = '1';
 
-
             // 一次性替换
-            post.innerHTML = processP(post);
+            let html = "";
+            const groups = splitPByTopLevelBr(post);
+            groups.forEach(nodes => {
+                nodes.forEach(node => {
+                    if (node.tagName === 'IMG') {
+                        // 如果是图片直接显示
+                        html += node.outerHTML;
+                        return;
+                    }
+
+                    // 保留原有的HTML结构（如斜体、粗体等），所以使用innerHTML
+                    const rawText = node.innerHTML || '';
+                    const message = parseMessage(rawText);
+                    const color = node.style && node.style.color || 'black';
+
+                    if (message) {
+                        html += renderMessage(message, color);
+                    }
+                });
+            });
+
+            post.innerHTML = html;
+
+        });
+    }
+
+    function processWallPosts() {
+        const divs = document.querySelectorAll('.post__content > div');
+
+        divs.forEach(div => {
+            if (div.dataset.trpgBeautified) return;
+            div.dataset.trpgBeautified = '1';
+
+            let html = "";
+            const groups = splitPByTopLevelBr(div);
+            groups.forEach(nodes => {
+                nodes.forEach(node => {
+                    if (node.tagName === 'IMG') {
+                        // 如果是图片直接显示
+                        html += node.outerHTML;
+                        return;
+                    }
+
+                    // 保留原有的HTML结构（如斜体、粗体等），所以使用innerHTML
+                    const rawText = node.innerHTML || '';
+                    // 如果只是纯时间，忽略
+                    if (rawText.match(/^\s*\d{1,2}:\d{2}:\d{2}\s*$/)) {
+                        return;
+                    }
+                    const message = parseMessage(rawText);
+                    const color = node.style && node.style.color || 'black';
+
+                    if (message) {
+                        html += renderMessage(message, color);
+                    }
+                });
+            });
+
+            div.innerHTML = html;
         });
     }
 
     // =========================
-    // 首次执行
+    // 执行入口 Start entry
     // =========================
-    processPosts();
+    const pageType = getPageType();
+    console.debug('Detected page type:', pageType);
+    switch (pageType) {
+        case PAGE_TYPES.LOG_SKY:
+            processSkyPosts();
+            break;
+        case PAGE_TYPES.LOG_WALL:
+            processWallPosts();
+            break;
+        default:
+            return;
+    }
 
     // =========================
     // 防抖 observer
@@ -383,7 +448,7 @@
         clearTimeout(timer);
 
         timer = setTimeout(() => {
-            processPosts();
+            processSkyPosts();
         }, 100);
     });
 
