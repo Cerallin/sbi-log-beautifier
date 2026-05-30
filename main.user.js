@@ -24,59 +24,51 @@
         LOG_WALL: 2, // 华尔街骑士
     };
 
+    // 日志格式配置
+    const LOG_FORMAT_CONFIG = {
+        [PAGE_TYPES.LOG_SKY]: {
+            name: 'SKY',
+            contentSelector: '.post__content > p',
+            detectionPattern: /[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm,
+            detectionThreshold: 20,
+            skipCondition: null,
+        },
+        [PAGE_TYPES.LOG_WALL]: {
+            name: 'WALL',
+            contentSelector: '.post__content > div',
+            detectionPattern: /\d+:\d+:\d+\s+<[^|<>]{1,40}\|[^<>]{1,40}>/gm,
+            detectionThreshold: 20,
+            skipCondition: (rawText) => rawText.match(/^\s*\d{1,2}:\d{2}:\d{2}\s*$/),
+        },
+    };
+
     // =========================
     // 根据文本特征判断是否是跑团log页面
-    // 特征：
-    // 1. 出现 "角色|玩家:" 格式超过20次
     // =========================
     function getPageType() {
-
-        const posts =
-            document.querySelectorAll('.post__content');
+        const posts = document.querySelectorAll('.post__content');
 
         if (!posts.length) {
-            return false;
+            return PAGE_TYPES.NO_LOG;
         }
 
-        // 匹配：
-        // 角色|玩家:
-        //
-        // 示例：
-        // 阿尔托莉雅|津美:
-        // KP|主持人:
-        //
-        // 不允许换行
-        const skyMatchCount = Array.from(posts).reduce((sum, post) => {
-            const text = post.textContent || '';
-            const matches = text.match(/[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm);
-            if (matches) {
-                return sum + matches.length;
+        for (const [pageType, config] of Object.entries(LOG_FORMAT_CONFIG)) {
+            const matchCount = countMatches(posts, config.detectionPattern);
+            if (matchCount >= config.detectionThreshold) {
+                return parseInt(pageType);
             }
-        }, 0);
-
-        if (skyMatchCount >= 20) {
-            return PAGE_TYPES.LOG_SKY;
         }
 
-        // 匹配：
-        // 时间 <角色|玩家>
-        //
-        // 示例：
-        // 13:10:42 <利亚姆|清水>
-        const wallMatchCount = Array.from(posts).reduce((sum, post) => {
-            const text = post.textContent || '';
-            const matches = text.match(/\d+:\d+:\d+\s+<[^|<>]{1,40}\|[^<>]{1,40}>/gm);
-            if (matches) {
-                return sum + matches.length;
-            }
-        }, 0);
-
-        if (wallMatchCount >= 20) {
-            return PAGE_TYPES.LOG_WALL;
-        }
-
-        // 都不是，返回非日志页
         return PAGE_TYPES.NO_LOG;
+    }
+
+    // 统计所有帖子中匹配模式的总数
+    function countMatches(posts, pattern) {
+        return Array.from(posts).reduce((sum, post) => {
+            const text = post.textContent || '';
+            const matches = text.match(pattern);
+            return sum + (matches ? matches.length : 0);
+        }, 0);
     }
 
     // 从 "rgb(...)" 或 "rgba(...)" 字符串解析出 [r,g,b,a]
@@ -87,31 +79,49 @@
         return [parseInt(m[1], 10), parseInt(m[2], 10), parseInt(m[3], 10), m[4] !== undefined ? parseFloat(m[4]) : 1];
     }
 
+    // 命名颜色映射表
+    const NAMED_COLORS = {
+        red: [255, 80, 80],
+        green: [80, 200, 120],
+        blue: [80, 120, 255],
+        purple: [180, 100, 255],
+        grey: [120, 120, 120],
+        gray: [120, 120, 120],
+        orange: [255, 165, 0],
+        yellow: [255, 220, 0],
+        pink: [255, 105, 180],
+        cyan: [0, 180, 180],
+        black: [0, 0, 0]
+    };
+
+    // 将 RGB 数组转换为 CSS 颜色字符串
+    function rgbArrayToString(rgb, alpha) {
+        const [r, g, b] = rgb;
+        return alpha !== undefined ? `rgba(${r}, ${g}, ${b}, ${alpha})` : `rgb(${r}, ${g}, ${b})`;
+    }
+
     // 给定任意 CSS 合法颜色，返回低透明度背景色和用于边框/文字的实色
     function getColors(colorInput) {
-        const color = (colorInput || 'black').toString();
+        const color = (colorInput || 'black').toString().toLowerCase();
+        let rgb = null;
 
-        const NAMED_COLOR_BG_MAP = {
-            red: `rgba(255, 80, 80, ${OPTIONS.msgOpacity})`,
-            green: `rgba(80, 200, 120, ${OPTIONS.msgOpacity})`,
-            blue: `rgba(80, 120, 255, ${OPTIONS.msgOpacity})`,
-            purple: `rgba(180, 100, 255, ${OPTIONS.msgOpacity})`,
-            grey: `rgba(120, 120, 120, ${OPTIONS.msgOpacity})`,
-            gray: `rgba(120, 120, 120, ${OPTIONS.msgOpacity})`,
-            orange: `rgba(255, 165, 0, ${OPTIONS.msgOpacity})`,
-            yellow: `rgba(255, 220, 0, ${OPTIONS.msgOpacity})`,
-            pink: `rgba(255, 105, 180, ${OPTIONS.msgOpacity})`,
-            cyan: `rgba(0, 180, 180, ${OPTIONS.msgOpacity})`,
-            black: `rgba(0, 0, 0, ${OPTIONS.msgOpacity})`
-        };
-
-        // 优先使用命名映射（保留原有细节）
-        const key = color.toLowerCase();
-        if (NAMED_COLOR_BG_MAP[key]) {
-            return { bgColor: NAMED_COLOR_BG_MAP[key], solidColor: key };
+        // 优先使用命名颜色映射
+        if (NAMED_COLORS[color]) {
+            rgb = NAMED_COLORS[color];
+        } else {
+            // 使用离屏元素让浏览器解析任意 CSS 颜色字符串
+            rgb = parseColorWithElement(color);
         }
 
-        // 使用离屏元素让浏览器解析任意 CSS 颜色字符串
+        const [r, g, b] = rgb;
+        const bgColor = `rgba(${r}, ${g}, ${b}, ${OPTIONS.msgOpacity})`;
+        const solidColor = `rgb(${r}, ${g}, ${b})`;
+
+        return { bgColor, solidColor };
+    }
+
+    // 通过创建离屏元素解析 CSS 颜色
+    function parseColorWithElement(color) {
         const el = document.createElement('div');
         el.style.position = 'absolute';
         el.style.width = '1px';
@@ -123,12 +133,7 @@
         document.body.removeChild(el);
 
         const rgba = parseRGBString(computed) || [0, 0, 0, 1];
-        const r = rgba[0], g = rgba[1], b = rgba[2];
-
-        const bgColor = `rgba(${r}, ${g}, ${b}, ${OPTIONS.msgOpacity})`;
-        const solidColor = `rgb(${r}, ${g}, ${b})`;
-
-        return { bgColor, solidColor };
+        return rgba.slice(0, 3);
     }
 
     // =========================
@@ -207,47 +212,66 @@
             original: rawText,
         };
 
-        const firstColon = rawText.indexOf(':');
-        if (firstColon !== -1) {
-            const left = rawText.slice(0, firstColon).trim();
-            const right = rawText.slice(firstColon + 1).trim();
+        // 尝试解析为冒号分割格式 (角色|玩家: 或 KP:)
+        const colonParsed = parseColonFormat(rawText, message);
+        if (colonParsed) return message;
 
-            if (left.includes('|')) {
-                const [role, player] = left.split('|').map(item => item.trim());
-                message.role = role;
-                message.player = player;
-            } else {
-                message.gm = left;
-            }
+        // 尝试解析为尖括号格式 <角色|玩家> (华尔街格式)
+        const angleParsed = parseAngleBracketFormat(rawText, message);
+        if (angleParsed) return message;
 
-            message.text = right;
-            message.isOoc = right.startsWith('（') || right.startsWith('(');
-            return message;
-        }
-
-        const wallMatch = rawText.match(/^\s*&lt;([^<>]{1,40})&gt;\s*([\s\S]*)$/);
-        if (wallMatch) {
-            const inner = wallMatch[1].trim();
-            const body = wallMatch[2].trim();
-
-            if (inner.includes('|')) {
-                const [role, player] = inner.split('|').map(item => item.trim());
-                message.role = role;
-                message.player = player;
-            } else {
-                message.role = inner;
-            }
-
-            message.text = body;
-            message.isOoc = message.text.startsWith('（') || message.text.startsWith('(');
-            
-            return message;
-        }
-
+        // 其他格式作为系统消息处理
         message.text = rawText;
         message.isSystem = true;
 
         return message;
+    }
+
+    // 解析冒号分割格式：角色|玩家: 文本 或 KP: 文本
+    function parseColonFormat(rawText, message) {
+        const firstColon = rawText.indexOf(':');
+        if (firstColon === -1) return false;
+
+        const left = rawText.slice(0, firstColon).trim();
+        const right = rawText.slice(firstColon + 1).trim();
+
+        if (left.includes('|')) {
+            const [role, player] = left.split('|').map(item => item.trim());
+            message.role = role;
+            message.player = player;
+        } else {
+            message.gm = left;
+        }
+
+        message.text = right;
+        message.isOoc = isOocText(right);
+        return true;
+    }
+
+    // 解析尖括号格式：<角色|玩家> 文本
+    function parseAngleBracketFormat(rawText, message) {
+        const match = rawText.match(/^\s*&lt;([^<>]{1,40})&gt;\s*([\s\S]*)$/);
+        if (!match) return false;
+
+        const inner = match[1].trim();
+        const body = match[2].trim();
+
+        if (inner.includes('|')) {
+            const [role, player] = inner.split('|').map(item => item.trim());
+            message.role = role;
+            message.player = player;
+        } else {
+            message.role = inner;
+        }
+
+        message.text = body;
+        message.isOoc = isOocText(message.text);
+        return true;
+    }
+
+    // 判断是否为 OOC 文本（括号开头）
+    function isOocText(text) {
+        return text.startsWith('（') || text.startsWith('(');
     }
 
     // =========================
@@ -256,17 +280,41 @@
     function renderMessage(message, color) {
         if (!message || !message.text) return '';
 
-        color = (color || 'black').toLowerCase();
+        const { bgColor, solidColor } = getColors(color || 'black');
+        const extraClass = message.isOoc ? 'trpg-ooc' : '';
 
-        const { bgColor, solidColor } = getColors(color);
-        const background = bgColor || `rgba(0,0,0,${OPTIONS.msgOpacity})`;
-        const borderColor = solidColor || color;
+        const nameHTML = buildNameHTML(message, solidColor);
+        const textHTML = message.text.replace(/\n/g, '<br>');
 
-        let nameHTML = '';
-        let extraClass = message.isOoc ? 'trpg-ooc' : '';
+        return `
+            <div
+                class="trpg-msg ${extraClass}"
+                style="
+                    background:${bgColor};
+                    border-left:4px solid ${solidColor};
+                "
+            >
+                <div
+                    class="trpg-name"
+                    style="color:${solidColor}"
+                >
+                    ${nameHTML}
+                </div>
 
+                <div
+                    class="trpg-text"
+                    ${extraClass === '' ? '' : `style="color:${solidColor};"`}
+                >
+                    ${textHTML}
+                </div>
+            </div>
+        `;
+    }
+
+    // 构建名字区域 HTML
+    function buildNameHTML(message, color) {
         if (message.role || message.player) {
-            nameHTML = `
+            return `
                 <span class="trpg-role">
                     ${message.role || ''}
                 </span>
@@ -275,67 +323,28 @@
                 </span>
             `;
         } else if (message.gm) {
-            nameHTML = `
-                <span class="trpg-gm">
-                    ${message.gm}
-                </span>
-            `;
+            return `<span class="trpg-gm">${message.gm}</span>`;
         }
-
-        const textHTML = message.text
-            .replace(/\n/g, '<br>');
-
-        return `
-            <div
-                class="trpg-msg ${extraClass}"
-                style="
-                    background:${background};
-                    border-left:4px solid ${borderColor};
-                "
-            >
-                <div
-                    class="trpg-name"
-                    style="color:${borderColor}"
-                >
-                    ${nameHTML}
-                </div>
-
-                <div
-                    class="trpg-text"
-                    ${(extraClass == '') ? '' : `style="color:${solidColor};"`}
-                >
-                    ${textHTML}
-                </div>
-            </div>
-        `;
+        return '';
     }
 
     // =========================
-    // 获取p标签下所有的内容，有以下几种
-    // 1. span包裹的消息行
-    // 2. 纯文本行（备注、分团信息等）
-    // 3. 图片
+    // 获取容器下所有的内容分组
+    // 在顶层 BR 处分割，保留其他结构
     // =========================
-    function splitPByTopLevelBr(p) {
+    function splitContainerByTopLevelBr(container) {
         const groups = [];
         let current = [];
 
-        if (!p || !p.childNodes) return groups;
+        if (!container || !container.childNodes) return groups;
 
-        // 只在顶层进行分割，嵌套的br不处理
-        p.childNodes.forEach(node => {
-
+        container.childNodes.forEach(node => {
             // 顶层 BR -> 分段
-            if (
-                node.nodeType === Node.ELEMENT_NODE &&
-                node.tagName === 'BR'
-            ) {
-
+            if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
                 if (current.length) {
                     groups.push(current);
                     current = [];
                 }
-
                 return;
             }
 
@@ -349,76 +358,54 @@
         return groups;
     }
 
-    // =========================
-    // 批量处理
-    // =========================
-    function processSkyPosts() {
-        const posts = document.querySelectorAll('.post__content > p');
+    // 处理单个节点组
+    function processNodeGroup(nodes, skipCondition) {
+        let html = '';
 
-        posts.forEach(post => {
-            if (post.dataset.trpgBeautified) return;
-            post.dataset.trpgBeautified = '1';
+        nodes.forEach(node => {
+            if (node.tagName === 'IMG') {
+                html += node.outerHTML;
+                return;
+            }
 
-            // 一次性替换
-            let html = "";
-            const groups = splitPByTopLevelBr(post);
-            groups.forEach(nodes => {
-                nodes.forEach(node => {
-                    if (node.tagName === 'IMG') {
-                        // 如果是图片直接显示
-                        html += node.outerHTML;
-                        return;
-                    }
+            const rawText = node.innerHTML || '';
 
-                    // 保留原有的HTML结构（如斜体、粗体等），所以使用innerHTML
-                    const rawText = node.innerHTML || '';
-                    const message = parseMessage(rawText);
-                    const color = node.style && node.style.color || 'black';
+            // 应用跳过条件（例如纯时间戳）
+            if (skipCondition && skipCondition(rawText)) {
+                return;
+            }
 
-                    if (message) {
-                        html += renderMessage(message, color);
-                    }
-                });
-            });
+            const message = parseMessage(rawText);
+            const color = node.style?.color || 'black';
 
-            post.innerHTML = html;
-
+            if (message) {
+                html += renderMessage(message, color);
+            }
         });
+
+        return html;
     }
 
-    function processWallPosts() {
-        const divs = document.querySelectorAll('.post__content > div');
+    // =========================
+    // 统一处理函数 - 适用于所有日志格式
+    // =========================
+    function processPosts(pageType) {
+        const config = LOG_FORMAT_CONFIG[pageType];
+        if (!config) return;
 
-        divs.forEach(div => {
-            if (div.dataset.trpgBeautified) return;
-            div.dataset.trpgBeautified = '1';
+        const containers = document.querySelectorAll(config.contentSelector);
 
-            let html = "";
-            const groups = splitPByTopLevelBr(div);
+        containers.forEach(container => {
+            if (container.dataset.trpgBeautified) return;
+            container.dataset.trpgBeautified = '1';
+
+            let html = '';
+            const groups = splitContainerByTopLevelBr(container);
             groups.forEach(nodes => {
-                nodes.forEach(node => {
-                    if (node.tagName === 'IMG') {
-                        // 如果是图片直接显示
-                        html += node.outerHTML;
-                        return;
-                    }
-
-                    // 保留原有的HTML结构（如斜体、粗体等），所以使用innerHTML
-                    const rawText = node.innerHTML || '';
-                    // 如果只是纯时间，忽略
-                    if (rawText.match(/^\s*\d{1,2}:\d{2}:\d{2}\s*$/)) {
-                        return;
-                    }
-                    const message = parseMessage(rawText);
-                    const color = node.style && node.style.color || 'black';
-
-                    if (message) {
-                        html += renderMessage(message, color);
-                    }
-                });
+                html += processNodeGroup(nodes, config.skipCondition);
             });
 
-            div.innerHTML = html;
+            container.innerHTML = html;
         });
     }
 
@@ -427,28 +414,24 @@
     // =========================
     const pageType = getPageType();
     console.debug('Detected page type:', pageType);
-    switch (pageType) {
-        case PAGE_TYPES.LOG_SKY:
-            processSkyPosts();
-            break;
-        case PAGE_TYPES.LOG_WALL:
-            processWallPosts();
-            break;
-        default:
-            return;
+
+    if (pageType === PAGE_TYPES.NO_LOG) {
+        console.debug('Not a log page, exiting');
+        return;
     }
 
+    // 初始化处理
+    processPosts(pageType);
+
     // =========================
-    // 防抖 observer
+    // 防抖 observer - 监听动态内容更新
     // =========================
     let timer = null;
 
     const observer = new MutationObserver(() => {
-
         clearTimeout(timer);
-
         timer = setTimeout(() => {
-            processSkyPosts();
+            processPosts(pageType);
         }, 100);
     });
 
