@@ -15,6 +15,7 @@
 
     const OPTIONS = {
         msgOpacity: 0.05,
+        msgFontSize: '18px',
     };
 
     // =========================
@@ -134,15 +135,10 @@
 
             border-radius: 10px;
             line-height: 1.6;
-            font-size: 18px;
+            font-size: ${OPTIONS.msgFontSize};
 
             transition: all 0.15s ease;
         }
-
-        // FIXME 先不要hover动画
-        // .trpg-msg:hover {
-        //     transform: translateX(2px);
-        // }
 
         .trpg-name {
             flex: 0 0 120px;
@@ -163,7 +159,7 @@
 
         .trpg-player {
             opacity: 0.6;
-            font-size: 12px;
+            font-size: 0.75em;
             margin-left: 4px;
         }
 
