@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         sbi log美化
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @updateURL    https://raw.githubusercontent.com/Cerallin/sbi-log-beautifier/master/main.user.js
 // @downloadURL  https://raw.githubusercontent.com/Cerallin/sbi-log-beautifier/master/main.user.js
 // @description  跑团聊天记录渲染优化
