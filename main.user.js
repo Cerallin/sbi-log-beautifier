@@ -28,7 +28,7 @@
     const LOG_FORMAT_CONFIG = {
         [PAGE_TYPES.LOG_SKY]: {
             name: 'SKY',
-            contentSelector: '.post__content > p',
+            contentSelector: '.post__content > p, .post__content > details > p',
             detectionPattern: /[^|\n\r]{1,40}\|[^:\n\r]{1,40}:/gm,
             detectionThreshold: 20,
             skipCondition: null,
