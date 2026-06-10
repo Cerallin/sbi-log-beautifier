@@ -358,6 +358,15 @@
         return groups;
     }
 
+    function normalizeHtml(rawHtml) {
+        const html = (rawHtml || '').toString().trim();
+        if (!html) return '';
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        return doc.body.innerHTML;
+    }
+
     // 处理单个节点组
     function processNodeGroup(nodes, skipCondition) {
         let html = '';
@@ -368,14 +377,18 @@
                 return;
             }
 
-            const rawText = node.innerHTML || '';
+            const rawText = node.nodeType === Node.TEXT_NODE
+                ? node.textContent || ''
+                : node.innerHTML || '';
+
+            const fixedHtml = normalizeHtml(rawText);
 
             // 应用跳过条件（例如纯时间戳）
-            if (skipCondition && skipCondition(rawText)) {
+            if (skipCondition && skipCondition(fixedHtml)) {
                 return;
             }
 
-            const message = parseMessage(rawText);
+            const message = parseMessage(fixedHtml);
             const color = node.style?.color || 'black';
 
             if (message) {
